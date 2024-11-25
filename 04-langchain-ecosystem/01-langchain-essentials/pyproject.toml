@@ -20,4 +20,5 @@ dependencies = [
     "langchain>=0.3.7",
     "langchain-experimental>=0.3.3",
     "datetime>=5.5",
+    "scikit-image>=0.24.0",
 ]
