@@ -14,5 +14,5 @@ dependencies = [
     "tiktoken>=0.8.0",
     "langchain>=0.3.7",
     "langchain-experimental>=0.3.3",
-    "datetime>=5.5",
+    "datetime>=5.5"
 ]
