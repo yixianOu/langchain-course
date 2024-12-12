@@ -20,8 +20,9 @@ Once `uv` is installed and available in your terminal you can navigate to your c
 
 ```
 cd example-chapter
-uv python install
-uv venv
+uv python install 3.12.7
+uv venv --python 3.12.7
+uv sync
 ```
 
 > ❗️ You may need to restart the terminal if the `uv` command is not recognized by your terminal.
