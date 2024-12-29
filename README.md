@@ -1,25 +1,24 @@
-# Agents Course
+# LangChain Course
 
-Welcome to the agents course by Aurelio AI!
+Welcome to the LangChain course by Aurelio AI!
 
 ## Getting Started
 
 ### Python Environment (IMPORTANT)
 
-Each chapter of the course is contained within it's own directory. Each of those includes everything you need to install an exact duplicate Python environment as used during the course creation. 
+This course repo contains everything you need to install an exact duplicate Python environment as used during the course creation. 
 
 #### Installing Python Venvs
 
-These packages are managed using the [uv](https://github.com/astral-sh/uv) package manager, and so we must install `uv` as a prerequisite for the course. We do so by following the [installation guide](https://docs.astral.sh/uv/#getting-started). For Mac users, as of 22 Oct 2024 enter the following in your terminal:
+The Python packages are managed using the [uv](https://github.com/astral-sh/uv) package manager, and so we must install `uv` as a prerequisite for the course. We do so by following the [installation guide](https://docs.astral.sh/uv/#getting-started). For Mac users, as of 22 Oct 2024 enter the following in your terminal:
 
 ```
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Once `uv` is installed and available in your terminal you can navigate to your chosen chapter directory and execute:
+Once `uv` is installed and available in your terminal you can navigate to the course root directory and execute:
 
 ```
-cd example-chapter
 uv python install 3.12.7
 uv venv --python 3.12.7
 uv sync
@@ -43,20 +42,19 @@ This command will open a new code window, from here you open the relevant files 
 
 #### Uninstalling Venvs
 
-Naturally, we might not want to keep all of these venvs clogging up the memory on our system, so after completing a chapter we recommend removing the venv with:
+Naturally, we might not want to keep all of these venvs clogging up the memory on our system, so after completing the course we recommend removing the venv with:
 
 ```
-cd example-chapter
 deactivate
 rm -rf .venv -r
 ```
 
 ### Ollama
 
-Many chapters use local LLMs via Ollama. To use Ollama you must go to [ollama.com](https://ollama.com/) and install Ollama for your respective OS (MacOS is recommended).
+The course can be run using OpenAI or Ollama. If using Ollama, you must go to [ollama.com](https://ollama.com/) and install Ollama for your respective OS (MacOS is recommended).
 
 Whenever an LLM is used via Ollama you must:
 
 1. Ensure Ollama is running by executing `ollama serve` in your terminal or running the Ollama application. Make sure to keep note of the port the server is running on, by default Ollama runs on `http://localhost:11434`
 
-2. Download the LLM being used in your current chapter using `ollama pull`. For example, to download Llama 3.2 3B, we execute `ollama pull llama 3.2:3b` in our terminal.
+2. Download the LLM being used in your current example using `ollama pull`. For example, to download Llama 3.2 3B, we execute `ollama pull llama 3.2:3b` in our terminal.
