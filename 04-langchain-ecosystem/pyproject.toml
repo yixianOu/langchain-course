@@ -10,15 +10,10 @@ dependencies = [
     "langchain-ollama>=0.2.0",
     "langchain-openai>=0.2.5",
     "langsmith>=0.1.139",
-<<<<<<<< HEAD:04-langchain-ecosystem/03-langchain-conversational_memory/pyproject.toml
-    "tiktoken>=0.8.0",
     "transformers>=4.46.2",
-]
-========
     "langchain-community>=0.3.5",
     "tiktoken>=0.8.0",
     "langchain>=0.3.7",
     "langchain-experimental>=0.3.3",
     "datetime>=5.5"
 ]
->>>>>>>> main:04-langchain-ecosystem/pyproject.toml
