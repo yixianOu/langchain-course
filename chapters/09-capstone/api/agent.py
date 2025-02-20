@@ -1,17 +1,20 @@
 import asyncio
+import aiohttp
 import os
 
-from langchain.agents import load_tools
+from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain.callbacks.base import AsyncCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import ConfigurableField
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
+
 
 # Constants and Configuration
 OPENAI_API_KEY = SecretStr(os.environ["OPENAI_API_KEY"])
+SERPAPI_API_KEY = SecretStr(os.environ["SERPAPI_API_KEY"])
 
 # LLM and Prompt Setup
 llm = ChatOpenAI(
@@ -40,36 +43,69 @@ prompt = ChatPromptTemplate.from_messages([
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
+# we use the article object for parsing serpapi results later
+class Article(BaseModel):
+    title: str
+    source: str
+    link: str
+    snippet: str
+
+    @classmethod
+    def from_serpapi_result(cls, result: dict) -> "Article":
+        return cls(
+            title=result["title"],
+            source=result["source"],
+            link=result["link"],
+            snippet=result["snippet"],
+        )
+
 # Tools definition
+# note: we define all tools as async to simplify later code, but only the serpapi
+# tool is actually async
 @tool
-def add(x: float, y: float) -> float:
+async def add(x: float, y: float) -> float:
     """Add 'x' and 'y'."""
     return x + y
 
 @tool
-def multiply(x: float, y: float) -> float:
+async def multiply(x: float, y: float) -> float:
     """Multiply 'x' and 'y'."""
     return x * y
 
 @tool
-def exponentiate(x: float, y: float) -> float:
+async def exponentiate(x: float, y: float) -> float:
     """Raise 'x' to the power of 'y'."""
     return x ** y
 
 @tool
-def subtract(x: float, y: float) -> float:
+async def subtract(x: float, y: float) -> float:
     """Subtract 'x' from 'y'."""
     return y - x
 
 @tool
-def final_answer(answer: str, tools_used: list[str]) -> dict[str, str | list[str]]:
+async def serpapi(query: str) -> list[Article]:
+    """Use this tool to search the web."""
+    params = {
+        "api_key": SERPAPI_API_KEY.get_secret_value(),
+        "engine": "google",
+        "q": query,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            "https://serpapi.com/search",
+            params=params
+        ) as response:
+            results = await response.json()
+    return [Article.from_serpapi_result(result) for result in results["organic_results"]]
+
+@tool
+async def final_answer(answer: str, tools_used: list[str]) -> dict[str, str | list[str]]:
     """Use this tool to provide a final answer to the user."""
     return {"answer": answer, "tools_used": tools_used}
 
-serpapi_tool = load_tools(tool_names=['serpapi'], llm=llm)[0]
-
-tools = [add, subtract, multiply, exponentiate, final_answer, serpapi_tool]
-name2tool = {tool.name: tool.func for tool in tools}
+tools = [add, subtract, multiply, exponentiate, final_answer, serpapi]
+# note when we have sync tools we use tool.func, when async we use tool.coroutine
+name2tool = {tool.name: tool.coroutine for tool in tools}
 
 # Streaming Handler
 class QueueCallbackHandler(AsyncCallbackHandler):
@@ -167,7 +203,7 @@ class CustomAgentExecutor:
             tool_name = tool_call.tool_calls[0]["name"]
             tool_args = tool_call.tool_calls[0]["args"]
             tool_call_id = tool_call.tool_call_id
-            tool_out = name2tool[tool_name](**tool_args)
+            tool_out = await name2tool[tool_name](**tool_args)
             # add the tool output to the agent scratchpad
             tool_exec = ToolMessage(
                 content=f"{tool_out}",
