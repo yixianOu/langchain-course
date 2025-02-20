@@ -1,6 +1,0 @@
-TO START PROGRAM:
-
----> CD TO THE 'langchainapp' directory
----> USE 'uv run uvicorn main:app --reload' TO BEGIN RUNNING APPLICATION
----> USE THE NOTEBOOK TO TEST STREAMING APPLICATION
----> CAN ALSO GO TO 'http://127.0.0.1:8000/docs' TO PREVIEW ENDPOINTS DEFINED IN ROUTER
