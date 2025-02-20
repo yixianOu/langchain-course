@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from langchain.agents import load_tools
 from langchain.callbacks.base import AsyncCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -11,6 +12,33 @@ from pydantic import SecretStr
 
 # Constants and Configuration
 OPENAI_API_KEY = SecretStr(os.environ["OPENAI_API_KEY"])
+
+# LLM and Prompt Setup
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.0,
+    streaming=True,
+    api_key=OPENAI_API_KEY
+).configurable_fields(
+    callbacks=ConfigurableField(
+        id="callbacks",
+        name="callbacks",
+        description="A list of callbacks to use for streaming",
+    )
+)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", (
+        "You're a helpful assistant. When answering a user's question "
+        "you should first use one of the tools provided. After using a "
+        "tool the tool output will be provided back to you. When you have "
+        "all the information you need, you MUST use the final_answer tool "
+        "to provide a final answer to the user."
+    )),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("human", "{input}"),
+    MessagesPlaceholder(variable_name="agent_scratchpad"),
+])
 
 # Tools definition
 @tool
@@ -38,35 +66,10 @@ def final_answer(answer: str, tools_used: list[str]) -> dict[str, str | list[str
     """Use this tool to provide a final answer to the user."""
     return {"answer": answer, "tools_used": tools_used}
 
-tools = [add, subtract, multiply, exponentiate, final_answer]
+serpapi_tool = load_tools(tool_names=['serpapi'], llm=llm)[0]
+
+tools = [add, subtract, multiply, exponentiate, final_answer, serpapi_tool]
 name2tool = {tool.name: tool.func for tool in tools}
-
-# LLM and Prompt Setup
-llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.0,
-    streaming=True,
-    api_key=OPENAI_API_KEY
-).configurable_fields(
-    callbacks=ConfigurableField(
-        id="callbacks",
-        name="callbacks",
-        description="A list of callbacks to use for streaming",
-    )
-)
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", (
-        "You're a helpful assistant. When answering a user's question "
-        "you should first use one of the tools provided. After using a "
-        "tool the tool output will be provided back to you. You MUST "
-        "then use the final_answer tool to provide a final answer to the user. "
-        "DO NOT use the same tool more than once."
-    )),
-    MessagesPlaceholder(variable_name="chat_history"),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
 
 # Streaming Handler
 class QueueCallbackHandler(AsyncCallbackHandler):
@@ -183,19 +186,6 @@ class CustomAgentExecutor:
         ])
         # return the final answer in dict form
         return tool_args
-
-# Helper Functions
-async def token_generator(query: str, streamer):
-    task = asyncio.create_task(agent_executor.invoke(query, streamer))
-    async for token in streamer:
-        if token == "<<STEP_END>>":
-            yield "\n\n"
-        elif tool_calls := token.message.additional_kwargs.get("tool_calls"):
-            if tool_name := tool_calls[0]["function"]["name"]:
-                yield tool_name
-            if tool_args := tool_calls[0]["function"]["arguments"]:
-                yield tool_args
-    await task
 
 # Initialize agent executor
 agent_executor = CustomAgentExecutor()
