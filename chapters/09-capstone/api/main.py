@@ -25,16 +25,20 @@ async def token_generator(content: str, streamer: QueueCallbackHandler):
     ))
     # initialize various components to stream
     async for token in streamer:
-        if token == "<<STEP_END>>":
-            # send end of step token
-            yield "</step>"
-        elif tool_calls := token.message.additional_kwargs.get("tool_calls"):
-            if tool_name := tool_calls[0]["function"]["name"]:
-                # send start of step token followed by step name tokens
-                yield f"<step><step_name>{tool_name}</step_name>"
-            if tool_args := tool_calls[0]["function"]["arguments"]:
-                # tool args are streamed directly
-                yield tool_args
+        try:
+            if token == "<<STEP_END>>":
+                # send end of step token
+                yield "</step>"
+            elif tool_calls := token.message.additional_kwargs.get("tool_calls"):
+                if tool_name := tool_calls[0]["function"]["name"]:
+                    # send start of step token followed by step name tokens
+                    yield f"<step><step_name>{tool_name}</step_name>"
+                if tool_args := tool_calls[0]["function"]["arguments"]:
+                    # tool args are streamed directly, ensure it's properly encoded
+                    yield tool_args
+        except Exception as e:
+            print(f"Error streaming token: {e}")
+            continue
     await task
 
 # invoke function
@@ -45,5 +49,9 @@ async def invoke(content: str):
     # return the streaming response
     return StreamingResponse(
         token_generator(content, streamer),
-        media_type="text/plain"
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
     )

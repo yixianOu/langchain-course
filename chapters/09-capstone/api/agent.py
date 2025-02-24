@@ -2,7 +2,6 @@ import asyncio
 import aiohttp
 import os
 
-from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain.callbacks.base import AsyncCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -36,7 +35,8 @@ prompt = ChatPromptTemplate.from_messages([
         "you should first use one of the tools provided. After using a "
         "tool the tool output will be provided back to you. When you have "
         "all the information you need, you MUST use the final_answer tool "
-        "to provide a final answer to the user."
+        "to provide a final answer to the user. Use tools to answer the "
+        "user's CURRENT question, not previous questions."
     )),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
@@ -165,60 +165,75 @@ class CustomAgentExecutor:
         # invoke the agent but we do this iteratively in a loop until
         # reaching a final answer
         count = 0
+        final_answer: str | None = None
         agent_scratchpad: list[AIMessage | ToolMessage] = []
+        # streaming function
+        async def stream(query: str) -> list[AIMessage]:
+            response = self.agent.with_config(
+                callbacks=[streamer]
+            )
+            # we initialize the output dictionary that we will be populating with
+            # our streamed output
+            outputs = []
+            # now we begin streaming
+            async for token in response.astream({
+                "input": query,
+                "chat_history": self.chat_history,
+                "agent_scratchpad": agent_scratchpad
+            }):
+                tool_calls = token.additional_kwargs.get("tool_calls")
+                if tool_calls:
+                    # first check if we have a tool call id - this indicates a new tool
+                    if tool_calls[0]["id"]:
+                        outputs.append(token)
+                    else:
+                        outputs[-1] += token
+                else:
+                    pass
+            return [
+                AIMessage(
+                    content=x.content,
+                    tool_calls=x.tool_calls,
+                    tool_call_id=x.tool_calls[0]["id"]
+                ) for x in outputs
+            ]
+
         while count < self.max_iterations:
             # invoke a step for the agent to generate a tool call
-            async def stream(query: str) -> list[AIMessage]:
-                response = self.agent.with_config(
-                    callbacks=[streamer]
-                )
-                # we initialize the output dictionary that we will be populating with
-                # our streamed output
-                outputs = []
-                # now we begin streaming
-                async for token in response.astream({
-                    "input": query,
-                    "chat_history": self.chat_history,
-                    "agent_scratchpad": agent_scratchpad
-                }):
-                    tool_calls = token.additional_kwargs.get("tool_calls")
-                    if tool_calls:
-                        # first check if we have a tool call id - this indicates a new tool
-                        if tool_calls[0]["id"]:
-                            outputs.append(token)
-                        else:
-                            outputs[-1] += token
-                    else:
-                        pass
-                return [
-                    AIMessage(
-                        content=x.content,
-                        tool_calls=x.tool_calls,
-                        tool_call_id=x.tool_calls[0]["id"]
-                    ) for x in outputs
-                ]
-
             tool_calls = await stream(query=input)
-            # add initial tool call to scratchpad
-            agent_scratchpad.extend(tool_calls)
             # gather tool execution coroutines
-            coros = asyncio.gather(*[execute_tool(tool_call) for tool_call in tool_calls])
-            # execute all tools
-            tool_outs = await coros
-            # add the tool outputs to the agent scratchpad
-            agent_scratchpad.extend(tool_outs)
+            tool_obs = await asyncio.gather(
+                *[execute_tool(tool_call) for tool_call in tool_calls]
+            )
+            # append tool calls and tool observations to the scratchpad in order
+            id2tool_obs = {tool_call.tool_call_id: tool_obs for tool_call, tool_obs in zip(tool_calls, tool_obs)}
+            for tool_call in tool_calls:
+                agent_scratchpad.extend([
+                    tool_call,
+                    id2tool_obs[tool_call.tool_call_id]
+                ])
+            
             count += 1
             # if the tool call is the final answer tool, we stop
-            if tool_name == "final_answer":
+            found_final_answer = False
+            for tool_call in tool_calls:
+                if tool_call.tool_calls[0]["name"] == "final_answer":
+                    final_answer_call = tool_call.tool_calls[0]
+                    final_answer = final_answer_call["args"]["answer"]
+                    found_final_answer = True
+                    break
+            
+            # Only break the loop if we found a final answer
+            if found_final_answer:
                 break
+            
         # add the final output to the chat history, we only add the "answer" field
-        final_answer = tool_out["answer"]
         self.chat_history.extend([
             HumanMessage(content=input),
-            AIMessage(content=final_answer)
+            AIMessage(content=final_answer if final_answer else "No answer found")
         ])
         # return the final answer in dict form
-        return tool_args
+        return final_answer_call if final_answer else {"answer": "No answer found", "tools_used": []}
 
 # Initialize agent executor
-agent_executor = CustomAgentExecutor()
+agent_executor = CustomAgentExecutor()  
