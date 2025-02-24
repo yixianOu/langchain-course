@@ -8,5 +8,6 @@
 ## Run the App
 
 * `cd` into the `/app` directory
+* execute `npm install` to install the dependencies
 * execute `npm run dev` to start the app
 * you can find the app at `http://localhost:3000`
