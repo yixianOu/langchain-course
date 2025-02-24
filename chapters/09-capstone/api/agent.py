@@ -137,6 +137,15 @@ class QueueCallbackHandler(AsyncCallbackHandler):
         else:
             self.queue.put_nowait("<<STEP_END>>")
 
+async def execute_tool(tool_call: AIMessage) -> ToolMessage:
+    tool_name = tool_call.tool_calls[0]["name"]
+    tool_args = tool_call.tool_calls[0]["args"]
+    tool_out = await name2tool[tool_name](**tool_args)
+    return ToolMessage(
+        content=f"{tool_out}",
+        tool_call_id=tool_call.tool_calls[0]["id"]
+    )
+
 # Agent Executor
 class CustomAgentExecutor:
     def __init__(self, max_iterations: int = 3):
@@ -159,57 +168,45 @@ class CustomAgentExecutor:
         agent_scratchpad: list[AIMessage | ToolMessage] = []
         while count < self.max_iterations:
             # invoke a step for the agent to generate a tool call
-            async def stream(query: str):
+            async def stream(query: str) -> list[AIMessage]:
                 response = self.agent.with_config(
                     callbacks=[streamer]
                 )
                 # we initialize the output dictionary that we will be populating with
                 # our streamed output
-                output = None
+                outputs = []
                 # now we begin streaming
                 async for token in response.astream({
                     "input": query,
                     "chat_history": self.chat_history,
                     "agent_scratchpad": agent_scratchpad
                 }):
-                    if output is None:
-                        output = token
-                    else:
-                        # we can just add the tokens together as they are streamed and
-                        # we'll have the full response object at the end
-                        output += token
-                    if token.content != "":
-                        # we can capture various parts of the response object
-                        if verbose: print(f"content: {token.content}", flush=True)
                     tool_calls = token.additional_kwargs.get("tool_calls")
                     if tool_calls:
-                        if verbose: print(f"tool_calls: {tool_calls}", flush=True)
-                        tool_name = tool_calls[0]["function"]["name"]
-                        if tool_name:
-                            if verbose: print(f"tool_name: {tool_name}", flush=True)
-                        arg = tool_calls[0]["function"]["arguments"]
-                        if arg != "":
-                            if verbose: print(f"arg: {arg}", flush=True)
-                return AIMessage(
-                    content=output.content,
-                    tool_calls=output.tool_calls,
-                    tool_call_id=output.tool_calls[0]["id"]
-                )
+                        # first check if we have a tool call id - this indicates a new tool
+                        if tool_calls[0]["id"]:
+                            outputs.append(token)
+                        else:
+                            outputs[-1] += token
+                    else:
+                        pass
+                return [
+                    AIMessage(
+                        content=x.content,
+                        tool_calls=x.tool_calls,
+                        tool_call_id=x.tool_calls[0]["id"]
+                    ) for x in outputs
+                ]
 
-            tool_call = await stream(query=input)
+            tool_calls = await stream(query=input)
             # add initial tool call to scratchpad
-            agent_scratchpad.append(tool_call)
-            # otherwise we execute the tool and add it's output to the agent scratchpad
-            tool_name = tool_call.tool_calls[0]["name"]
-            tool_args = tool_call.tool_calls[0]["args"]
-            tool_call_id = tool_call.tool_call_id
-            tool_out = await name2tool[tool_name](**tool_args)
-            # add the tool output to the agent scratchpad
-            tool_exec = ToolMessage(
-                content=f"{tool_out}",
-                tool_call_id=tool_call_id
-            )
-            agent_scratchpad.append(tool_exec)
+            agent_scratchpad.extend(tool_calls)
+            # gather tool execution coroutines
+            coros = asyncio.gather(*[execute_tool(tool_call) for tool_call in tool_calls])
+            # execute all tools
+            tool_outs = await coros
+            # add the tool outputs to the agent scratchpad
+            agent_scratchpad.extend(tool_outs)
             count += 1
             # if the tool call is the final answer tool, we stop
             if tool_name == "final_answer":

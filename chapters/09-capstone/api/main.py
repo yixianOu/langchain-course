@@ -12,7 +12,7 @@ async def token_generator(content: str, streamer: QueueCallbackHandler):
     task = asyncio.create_task(agent_executor.invoke(
         input=content,
         streamer=streamer,
-        verbose=False  # set to True to see verbose output in console
+        verbose=True  # set to True to see verbose output in console
     ))
     # initialize various components to stream
     async for token in streamer:
