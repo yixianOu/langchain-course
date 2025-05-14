@@ -56,5 +56,4 @@ The course can be run using OpenAI or Ollama. If using Ollama, you must go to [o
 Whenever an LLM is used via Ollama you must:
 
 1. Ensure Ollama is running by executing `ollama serve` in your terminal or running the Ollama application. Make sure to keep note of the port the server is running on, by default Ollama runs on `http://localhost:11434`
-
-2. Download the LLM being used in your current example using `ollama pull`. For example, to download Llama 3.2 3B, we execute `ollama pull llama 3.2:3b` in our terminal.
+1. Download the LLM being used in your current example using `ollama pull`. For example, to download Llama 3.2 3B, we execute `ollama pull llama 3.2:3b` in our terminal.
